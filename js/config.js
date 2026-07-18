@@ -7,8 +7,8 @@
 
 const GEARBINS_CONFIG = {
   // Your GitHub username and repo name, e.g. "spencer" / "gear-bins"
-  owner: "YOUR_GITHUB_USERNAME",
-  repo: "YOUR_REPO_NAME",
+  owner: "InspireFPU",
+  repo: "gearbins",
   branch: "main"
 };
 
