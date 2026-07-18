@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gear Bins</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="js/config.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="brand" href="index.html">Gear<span>Bins</span></a>
+    <nav><a href="manage-bins/index.html">Manage Bins</a><a href="add/index.html">+ Add Item</a></nav>
+  </div>
+
+  <div id="tagGrid" class="tag-grid"></div>
+</div>
+
+<script>
+  const grid = document.getElementById("tagGrid");
+
+  loadBinsPublic("").then(bins => {
+    if (bins.length === 0) {
+      grid.innerHTML = `<div class="empty-state">No bins yet. <a href="manage-bins/index.html" style="color:var(--orange);">Create your first bin</a>.</div>`;
+      return;
+    }
+    bins.forEach(bin => {
+    const a = document.createElement("a");
+    a.className = "tag";
+    a.href = `bins/viewer.html?bin=${bin.id}`;
+
+    a.innerHTML = `
+      <div class="bin-id">${bin.id}</div>
+      <h2>${bin.label}</h2>
+      <div class="count" data-count="${bin.id}">loading…</div>
+      <div class="qr" id="qr-${bin.id}"></div>
+      <a class="manage-mini" href="manage/index.html?bin=${bin.id}" style="display:block;margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:var(--olive);text-decoration:none;">Manage →</a>
+    `;
+    a.querySelector(".manage-mini").addEventListener("click", (e) => e.stopPropagation());
+    grid.appendChild(a);
+
+    // Render a QR code that points at this bin's viewer page.
+    // Print this page, cut out each tag's QR, and stick it on the physical bin.
+    const target = new URL(`bins/viewer.html?bin=${bin.id}`, window.location.href).href;
+    new QRCode(document.getElementById(`qr-${bin.id}`), {
+      text: target,
+      width: 160,
+      height: 160,
+      colorDark: "#1E2124",
+      colorLight: "#ffffff"
+    });
+
+    // Fill in item counts from each bin's JSON.
+    fetch(`data/${bin.id}.json`)
+      .then(r => r.ok ? r.json() : [])
+      .then(items => {
+        const el = document.querySelector(`[data-count="${bin.id}"]`);
+        el.textContent = `${items.length} item${items.length === 1 ? "" : "s"}`;
+      })
+      .catch(() => {
+        const el = document.querySelector(`[data-count="${bin.id}"]`);
+        el.textContent = "0 items";
+      });
+    });
+  });
+</script>
+</body>
+</html>

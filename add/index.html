@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Add Gear Item</title>
+<link rel="stylesheet" href="../css/style.css">
+<script src="../js/config.js"></script>
+<script src="../js/github-api.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="brand" href="../index.html">Gear<span>Bins</span></a>
+    <nav><a href="../manage-bins/index.html">Manage Bins</a><a href="../index.html">All Bins</a></nav>
+  </div>
+
+  <div class="form-card">
+    <h1>Add Item</h1>
+
+    <div class="field">
+      <label for="ghToken">GitHub Token</label>
+      <input type="password" id="ghToken" placeholder="ghp_… (fine-grained PAT, Contents: Read & write)">
+      <p class="token-note">
+        Stored only in this browser (localStorage) — never uploaded except directly to GitHub's API.
+        Use a fine-grained token scoped to just this repo with Contents read/write permission.
+        <a href="#" id="clearToken">Clear saved token</a>
+      </p>
+    </div>
+
+    <div class="field">
+      <label for="binSelect">Bin</label>
+      <select id="binSelect"></select>
+    </div>
+
+    <div class="field">
+      <label for="itemName">Item Name</label>
+      <input type="text" id="itemName" placeholder="e.g. Black Diamond Trekking Poles">
+    </div>
+
+    <div class="field">
+      <label for="itemNote">Notes (optional)</label>
+      <textarea id="itemNote" placeholder="Size, condition, anything worth remembering"></textarea>
+    </div>
+
+    <div class="field">
+      <label for="itemPhoto">Photo</label>
+      <div class="photo-input">
+        <div class="photo-preview" id="photoPreview">No photo yet</div>
+        <input type="file" id="itemPhoto" accept="image/*" capture="environment">
+      </div>
+    </div>
+
+    <button class="btn" id="submitBtn">Save to GitHub</button>
+    <div class="status-msg" id="statusMsg"></div>
+  </div>
+</div>
+
+<script>
+  const tokenInput = document.getElementById("ghToken");
+  const binSelect = document.getElementById("binSelect");
+  const nameInput = document.getElementById("itemName");
+  const noteInput = document.getElementById("itemNote");
+  const photoInput = document.getElementById("itemPhoto");
+  const photoPreview = document.getElementById("photoPreview");
+  const submitBtn = document.getElementById("submitBtn");
+  const statusMsg = document.getElementById("statusMsg");
+
+  // Pre-fill token if one is already saved on this device.
+  tokenInput.value = GithubApi.getToken();
+  tokenInput.addEventListener("change", () => GithubApi.setToken(tokenInput.value));
+
+  document.getElementById("clearToken").addEventListener("click", (e) => {
+    e.preventDefault();
+    GithubApi.clearToken();
+    tokenInput.value = "";
+  });
+
+  // Populate bin dropdown, preselecting ?bin= from the URL if present.
+  const params = new URLSearchParams(window.location.search);
+  const preselect = params.get("bin");
+  loadBinsPublic("../").then(bins => {
+    bins.forEach(bin => {
+      const opt = document.createElement("option");
+      opt.value = bin.id;
+      opt.textContent = bin.label;
+      if (bin.id === preselect) opt.selected = true;
+      binSelect.appendChild(opt);
+    });
+  });
+
+  let selectedFile = null;
+  photoInput.addEventListener("change", () => {
+    selectedFile = photoInput.files[0] || null;
+    if (!selectedFile) {
+      photoPreview.innerHTML = "No photo yet";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      photoPreview.innerHTML = `<img src="${reader.result}" alt="preview">`;
+    };
+    reader.readAsDataURL(selectedFile);
+  });
+
+  function showStatus(text, kind) {
+    statusMsg.textContent = text;
+    statusMsg.className = `status-msg show ${kind}`;
+  }
+
+  function slugify(str) {
+    return str
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 40) || "item";
+  }
+
+  submitBtn.addEventListener("click", async () => {
+    const token = tokenInput.value.trim();
+    const binId = binSelect.value;
+    const name = nameInput.value.trim();
+    const note = noteInput.value.trim();
+
+    if (!token) return showStatus("Paste a GitHub token first.", "err");
+    if (!name) return showStatus("Item name is required.", "err");
+    GithubApi.setToken(token);
+
+    submitBtn.disabled = true;
+    showStatus("Saving…", "pending");
+
+    try {
+      let imageFilename = null;
+
+      if (selectedFile) {
+        showStatus("Compressing photo…", "pending");
+        const base64 = await fileToCompressedBase64(selectedFile);
+        const ext = "jpg";
+        imageFilename = `${Date.now()}-${slugify(name)}.${ext}`;
+        const imagePath = `images/${binId}/${imageFilename}`;
+
+        showStatus("Uploading photo to GitHub…", "pending");
+        await GithubApi.putBinaryFile(
+          imagePath,
+          base64,
+          `Add photo for "${name}" (${binId})`,
+          null
+        );
+      }
+
+      showStatus("Updating bin list…", "pending");
+      const dataPath = `data/${binId}.json`;
+      const existing = await GithubApi.getFile(dataPath);
+      const items = existing.content ? JSON.parse(existing.content) : [];
+
+      items.push({
+        name,
+        note: note || undefined,
+        image: imageFilename,
+        addedAt: new Date().toISOString()
+      });
+
+      await GithubApi.putTextFile(
+        dataPath,
+        JSON.stringify(items, null, 2),
+        `Add "${name}" to ${binId}`,
+        existing.sha
+      );
+
+      showStatus("Saved! It may take ~30–60s for GitHub Pages to update.", "ok");
+      nameInput.value = "";
+      noteInput.value = "";
+      photoInput.value = "";
+      selectedFile = null;
+      photoPreview.innerHTML = "No photo yet";
+    } catch (err) {
+      console.error(err);
+      showStatus(`Failed: ${err.message}`, "err");
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

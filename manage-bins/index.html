@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manage Bins</title>
+<link rel="stylesheet" href="../css/style.css">
+<script src="../js/config.js"></script>
+<script src="../js/github-api.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="brand" href="../index.html">Gear<span>Bins</span></a>
+    <nav><a href="../index.html">All Bins</a></nav>
+  </div>
+
+  <div class="bin-header">
+    <div class="swatch"></div>
+    <div>
+      <h1>Manage Bins</h1>
+      <div class="meta" id="binCountMeta">—</div>
+    </div>
+  </div>
+
+  <div class="form-card" style="margin-bottom:20px;">
+    <div class="field" style="margin-bottom:0;">
+      <label for="ghToken">GitHub Token</label>
+      <input type="password" id="ghToken" placeholder="ghp_… (fine-grained PAT, Contents: Read & write)">
+      <p class="token-note">Same token used on Add/Manage Item pages. Stored only in this browser.</p>
+    </div>
+  </div>
+
+  <div id="list" class="manage-list" style="margin-bottom:24px;"></div>
+
+  <div class="form-card">
+    <h1>New Bin</h1>
+    <div class="field">
+      <label for="newLabel">Label</label>
+      <input type="text" id="newLabel" placeholder="e.g. Climbing Gear">
+    </div>
+    <div class="field">
+      <label for="newId">Bin ID (used in the URL &amp; filenames)</label>
+      <input type="text" id="newId" placeholder="auto-generated from label">
+    </div>
+    <button class="btn" id="createBtn">Create Bin</button>
+    <div class="status-msg" id="createStatus"></div>
+  </div>
+</div>
+
+<script>
+  const tokenInput = document.getElementById("ghToken");
+  const listEl = document.getElementById("list");
+  const countMeta = document.getElementById("binCountMeta");
+  const newLabel = document.getElementById("newLabel");
+  const newId = document.getElementById("newId");
+  const createBtn = document.getElementById("createBtn");
+  const createStatus = document.getElementById("createStatus");
+
+  tokenInput.value = GithubApi.getToken();
+  tokenInput.addEventListener("change", () => GithubApi.setToken(tokenInput.value));
+
+  let idManuallyEdited = false;
+  newId.addEventListener("input", () => { idManuallyEdited = true; });
+  newLabel.addEventListener("input", () => {
+    if (!idManuallyEdited) newId.value = slugify(newLabel.value);
+  });
+
+  function slugify(str) {
+    return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 40);
+  }
+
+  function showStatus(el, text, kind) {
+    el.textContent = text;
+    el.className = `status-msg show ${kind}`;
+  }
+
+  let binsSha = null;
+  let bins = [];
+
+  async function loadBins() {
+    listEl.innerHTML = `<div class="empty-state">Loading…</div>`;
+    const { content, sha } = await GithubApi.getFile("data/bins.json");
+    binsSha = sha;
+    bins = content ? JSON.parse(content) : [];
+    countMeta.textContent = `${bins.length} bin${bins.length === 1 ? "" : "s"}`;
+    render();
+  }
+
+  function render() {
+    if (bins.length === 0) {
+      listEl.innerHTML = `<div class="empty-state">No bins yet — create your first one below.</div>`;
+      return;
+    }
+    listEl.innerHTML = "";
+    bins.forEach((bin, index) => {
+      const row = document.createElement("div");
+      row.className = "manage-row";
+      row.innerHTML = `
+        <div class="details">
+          <p class="name">${bin.label}</p>
+          <p class="note">${bin.id}</p>
+        </div>
+        <div class="actions">
+          <button class="icon-btn edit" title="Rename" data-index="${index}">✎</button>
+          <button class="icon-btn delete" title="Delete" data-index="${index}">✕</button>
+        </div>
+      `;
+      listEl.appendChild(row);
+
+      const panelHolder = document.createElement("div");
+      panelHolder.id = `bin-panel-${index}`;
+      listEl.appendChild(panelHolder);
+
+      row.querySelector(".edit").addEventListener("click", () => toggleRenamePanel(index));
+      row.querySelector(".delete").addEventListener("click", () => handleDeleteBin(index));
+    });
+  }
+
+  function toggleRenamePanel(index) {
+    const holder = document.getElementById(`bin-panel-${index}`);
+    if (holder.childElementCount > 0) { holder.innerHTML = ""; return; }
+    listEl.querySelectorAll('[id^="bin-panel-"]').forEach(el => el.innerHTML = "");
+
+    const bin = bins[index];
+    const panel = document.createElement("div");
+    panel.className = "edit-panel";
+    panel.innerHTML = `
+      <div class="field">
+        <label>Label</label>
+        <input type="text" class="rename-label" value="${bin.label.replace(/"/g, '&quot;')}">
+      </div>
+      <p class="token-note">The bin ID (<code>${bin.id}</code>) stays the same — only the display label changes. (Changing the ID would break the printed QR code.)</p>
+      <div class="status-msg rename-status"></div>
+      <div class="btn-row">
+        <button class="btn rename-save">Save</button>
+        <button class="btn btn-secondary rename-cancel">Cancel</button>
+      </div>
+    `;
+    document.getElementById(`bin-panel-${index}`).appendChild(panel);
+
+    panel.querySelector(".rename-cancel").addEventListener("click", () => {
+      document.getElementById(`bin-panel-${index}`).innerHTML = "";
+    });
+
+    panel.querySelector(".rename-save").addEventListener("click", async () => {
+      const statusEl = panel.querySelector(".rename-status");
+      const token = tokenInput.value.trim();
+      if (!token) return showStatus(statusEl, "Paste a GitHub token first.", "err");
+      GithubApi.setToken(token);
+
+      const newLabelVal = panel.querySelector(".rename-label").value.trim();
+      if (!newLabelVal) return showStatus(statusEl, "Label can't be empty.", "err");
+
+      showStatus(statusEl, "Saving…", "pending");
+      try {
+        const { sha: freshSha } = await GithubApi.getFile("data/bins.json");
+        bins[index] = { ...bin, label: newLabelVal };
+        await GithubApi.putTextFile(
+          "data/bins.json",
+          JSON.stringify(bins, null, 2),
+          `Rename bin "${bin.id}" to "${newLabelVal}"`,
+          freshSha
+        );
+        showStatus(statusEl, "Saved!", "ok");
+        setTimeout(loadBins, 500);
+      } catch (err) {
+        console.error(err);
+        showStatus(statusEl, `Failed: ${err.message}`, "err");
+      }
+    });
+  }
+
+  async function handleDeleteBin(index) {
+    const bin = bins[index];
+    const sure = confirm(
+      `Delete "${bin.label}" (${bin.id})?\n\nThis removes it from the bin list and deletes its item list and photos. This can't be undone.`
+    );
+    if (!sure) return;
+
+    const token = tokenInput.value.trim();
+    if (!token) return alert("Paste a GitHub token first.");
+    GithubApi.setToken(token);
+
+    try {
+      // Best-effort: delete every photo belonging to this bin first.
+      const { content: itemsContent } = await GithubApi.getFile(`data/${bin.id}.json`);
+      const items = itemsContent ? JSON.parse(itemsContent) : [];
+      for (const item of items) {
+        if (!item.image) continue;
+        try {
+          const sha = await GithubApi.getFileSha(`images/${bin.id}/${item.image}`);
+          if (sha) await GithubApi.deleteFile(`images/${bin.id}/${item.image}`, `Delete photo (bin "${bin.id}" removed)`, sha);
+        } catch (e) { console.warn("Photo cleanup failed:", e); }
+      }
+
+      // Delete the bin's data file, if it exists.
+      const dataSha = await GithubApi.getFileSha(`data/${bin.id}.json`);
+      if (dataSha) {
+        await GithubApi.deleteFile(`data/${bin.id}.json`, `Delete bin "${bin.id}"`, dataSha);
+      }
+
+      // Remove it from the bin list.
+      const { sha: freshSha } = await GithubApi.getFile("data/bins.json");
+      const freshBins = bins.filter((_, i) => i !== index);
+      await GithubApi.putTextFile(
+        "data/bins.json",
+        JSON.stringify(freshBins, null, 2),
+        `Remove bin "${bin.id}" from bin list`,
+        freshSha
+      );
+
+      loadBins();
+    } catch (err) {
+      console.error(err);
+      alert(`Delete failed: ${err.message}`);
+    }
+  }
+
+  createBtn.addEventListener("click", async () => {
+    const token = tokenInput.value.trim();
+    const label = newLabel.value.trim();
+    const id = newId.value.trim() || slugify(label);
+
+    if (!token) return showStatus(createStatus, "Paste a GitHub token first.", "err");
+    if (!label) return showStatus(createStatus, "Label is required.", "err");
+    if (!id) return showStatus(createStatus, "Bin ID couldn't be generated — type one manually.", "err");
+    if (bins.some(b => b.id === id)) return showStatus(createStatus, `Bin ID "${id}" already exists.`, "err");
+    GithubApi.setToken(token);
+
+    createBtn.disabled = true;
+    showStatus(createStatus, "Creating…", "pending");
+
+    try {
+      // Create the empty item list for the new bin.
+      await GithubApi.putTextFile(`data/${id}.json`, "[]", `Create bin "${id}"`, null);
+      // Create a placeholder so the images/{id}/ folder exists in the repo
+      // (Git doesn't track empty folders otherwise).
+      await GithubApi.putTextFile(`images/${id}/.gitkeep`, "", `Create images folder for bin "${id}"`, null);
+
+      const { sha: freshSha } = await GithubApi.getFile("data/bins.json");
+      const freshBins = [...bins, { id, label }];
+      await GithubApi.putTextFile(
+        "data/bins.json",
+        JSON.stringify(freshBins, null, 2),
+        `Add bin "${id}"`,
+        freshSha
+      );
+
+      showStatus(createStatus, "Bin created!", "ok");
+      newLabel.value = "";
+      newId.value = "";
+      idManuallyEdited = false;
+      loadBins();
+    } catch (err) {
+      console.error(err);
+      showStatus(createStatus, `Failed: ${err.message}`, "err");
+    } finally {
+      createBtn.disabled = false;
+    }
+  });
+
+  loadBins();
+</script>
+</body>
+</html>

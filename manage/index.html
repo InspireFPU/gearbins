@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manage Bin</title>
+<link rel="stylesheet" href="../css/style.css">
+<script src="../js/config.js"></script>
+<script src="../js/github-api.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="brand" href="../index.html">Gear<span>Bins</span></a>
+    <nav>
+      <a href="#" id="viewerLink">View Bin</a>
+      <a href="../manage-bins/index.html">Manage Bins</a>
+      <a href="../index.html">All Bins</a>
+    </nav>
+  </div>
+
+  <div class="bin-header">
+    <div class="swatch"></div>
+    <div>
+      <h1 id="binTitle">Manage Bin</h1>
+      <div class="meta" id="binMeta">—</div>
+    </div>
+  </div>
+
+  <div class="form-card" style="margin-bottom:20px;">
+    <div class="field" style="margin-bottom:0;">
+      <label for="ghToken">GitHub Token</label>
+      <input type="password" id="ghToken" placeholder="ghp_… (fine-grained PAT, Contents: Read & write)">
+      <p class="token-note">Same token used on the Add Item page. Stored only in this browser.</p>
+    </div>
+  </div>
+
+  <div id="list" class="manage-list"></div>
+</div>
+
+<a id="addLink" class="fab" href="#">+ Add Item</a>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const binId = params.get("bin");
+  const listEl = document.getElementById("list");
+  const titleEl = document.getElementById("binTitle");
+  const metaEl = document.getElementById("binMeta");
+  const tokenInput = document.getElementById("ghToken");
+  const addLink = document.getElementById("addLink");
+  const viewerLink = document.getElementById("viewerLink");
+
+  tokenInput.value = GithubApi.getToken();
+  tokenInput.addEventListener("change", () => GithubApi.setToken(tokenInput.value));
+
+  let currentSha = null; // sha of data/{bin}.json, needed for every write
+  let currentItems = [];
+
+  function slugify(str) {
+    return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 40) || "item";
+  }
+
+  async function loadItems() {
+    listEl.innerHTML = `<div class="empty-state">Loading…</div>`;
+    const { content, sha } = await GithubApi.getFile(`data/${binId}.json`);
+    currentSha = sha;
+    currentItems = content ? JSON.parse(content) : [];
+    metaEl.textContent = `${currentItems.length} item${currentItems.length === 1 ? "" : "s"}`;
+    render();
+  }
+
+  function render() {
+    if (currentItems.length === 0) {
+      listEl.innerHTML = `<div class="empty-state">This bin is empty.</div>`;
+      return;
+    }
+    listEl.innerHTML = "";
+    currentItems.forEach((item, index) => {
+      const row = document.createElement("div");
+      row.className = "manage-row";
+      const thumb = item.image
+        ? `<img src="../images/${binId}/${item.image}" alt="${item.name}">`
+        : "no photo";
+      row.innerHTML = `
+        <div class="thumb">${thumb}</div>
+        <div class="details">
+          <p class="name">${item.name}</p>
+          ${item.note ? `<p class="note">${item.note}</p>` : ""}
+        </div>
+        <div class="actions">
+          <button class="icon-btn edit" title="Edit" data-index="${index}">✎</button>
+          <button class="icon-btn delete" title="Delete" data-index="${index}">✕</button>
+        </div>
+      `;
+      listEl.appendChild(row);
+
+      const panelHolder = document.createElement("div");
+      panelHolder.id = `panel-${index}`;
+      listEl.appendChild(panelHolder);
+
+      row.querySelector(".edit").addEventListener("click", () => toggleEditPanel(index));
+      row.querySelector(".delete").addEventListener("click", () => handleDelete(index));
+    });
+  }
+
+  function toggleEditPanel(index) {
+    const holder = document.getElementById(`panel-${index}`);
+    if (holder.childElementCount > 0) {
+      holder.innerHTML = "";
+      return;
+    }
+    // Close any other open panels first
+    listEl.querySelectorAll('[id^="panel-"]').forEach(el => el.innerHTML = "");
+
+    const item = currentItems[index];
+    const panel = document.createElement("div");
+    panel.className = "edit-panel";
+    panel.innerHTML = `
+      <div class="field">
+        <label>Item Name</label>
+        <input type="text" class="edit-name" value="${item.name.replace(/"/g, '&quot;')}">
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea class="edit-note">${item.note || ""}</textarea>
+      </div>
+      <div class="field">
+        <label>Replace Photo (optional)</label>
+        <div class="photo-input">
+          <div class="photo-preview edit-preview">${item.image ? `<img src="../images/${binId}/${item.image}">` : "No photo"}</div>
+          <input type="file" class="edit-photo" accept="image/*" capture="environment">
+        </div>
+      </div>
+      <div class="status-msg edit-status"></div>
+      <div class="btn-row">
+        <button class="btn edit-save">Save Changes</button>
+        <button class="btn btn-secondary edit-cancel">Cancel</button>
+      </div>
+    `;
+    document.getElementById(`panel-${index}`).appendChild(panel);
+
+    let newFile = null;
+    const fileInput = panel.querySelector(".edit-photo");
+    const preview = panel.querySelector(".edit-preview");
+    fileInput.addEventListener("change", () => {
+      newFile = fileInput.files[0] || null;
+      if (!newFile) return;
+      const reader = new FileReader();
+      reader.onload = () => { preview.innerHTML = `<img src="${reader.result}">`; };
+      reader.readAsDataURL(newFile);
+    });
+
+    panel.querySelector(".edit-cancel").addEventListener("click", () => {
+      document.getElementById(`panel-${index}`).innerHTML = "";
+    });
+
+    panel.querySelector(".edit-save").addEventListener("click", async () => {
+      const statusEl = panel.querySelector(".edit-status");
+      const token = tokenInput.value.trim();
+      if (!token) {
+        statusEl.textContent = "Paste a GitHub token first.";
+        statusEl.className = "status-msg edit-status show err";
+        return;
+      }
+      GithubApi.setToken(token);
+
+      const saveBtn = panel.querySelector(".edit-save");
+      saveBtn.disabled = true;
+      statusEl.className = "status-msg edit-status show pending";
+      statusEl.textContent = "Saving…";
+
+      try {
+        const updatedName = panel.querySelector(".edit-name").value.trim();
+        const updatedNote = panel.querySelector(".edit-note").value.trim();
+        let updatedImage = item.image;
+
+        if (newFile) {
+          statusEl.textContent = "Uploading new photo…";
+          const base64 = await fileToCompressedBase64(newFile);
+          updatedImage = `${Date.now()}-${slugify(updatedName)}.jpg`;
+          await GithubApi.putBinaryFile(
+            `images/${binId}/${updatedImage}`,
+            base64,
+            `Replace photo for "${updatedName}" (${binId})`,
+            null
+          );
+          // Best-effort cleanup of the old image file
+          if (item.image) {
+            try {
+              const oldSha = await GithubApi.getFileSha(`images/${binId}/${item.image}`);
+              if (oldSha) await GithubApi.deleteFile(`images/${binId}/${item.image}`, `Remove old photo for "${updatedName}"`, oldSha);
+            } catch (e) { console.warn("Old photo cleanup failed:", e); }
+          }
+        }
+
+        statusEl.textContent = "Updating bin list…";
+        currentItems[index] = {
+          ...item,
+          name: updatedName,
+          note: updatedNote || undefined,
+          image: updatedImage
+        };
+
+        const { sha: freshSha } = await GithubApi.getFile(`data/${binId}.json`);
+        await GithubApi.putTextFile(
+          `data/${binId}.json`,
+          JSON.stringify(currentItems, null, 2),
+          `Edit "${updatedName}" in ${binId}`,
+          freshSha
+        );
+
+        statusEl.textContent = "Saved!";
+        statusEl.className = "status-msg edit-status show ok";
+        setTimeout(() => loadItems(), 600);
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = `Failed: ${err.message}`;
+        statusEl.className = "status-msg edit-status show err";
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+  }
+
+  async function handleDelete(index) {
+    const item = currentItems[index];
+    if (!confirm(`Delete "${item.name}"? This can't be undone.`)) return;
+
+    const token = tokenInput.value.trim();
+    if (!token) return alert("Paste a GitHub token first.");
+    GithubApi.setToken(token);
+
+    try {
+      if (item.image) {
+        try {
+          const imgSha = await GithubApi.getFileSha(`images/${binId}/${item.image}`);
+          if (imgSha) await GithubApi.deleteFile(`images/${binId}/${item.image}`, `Delete photo for "${item.name}"`, imgSha);
+        } catch (e) { console.warn("Photo delete failed (continuing):", e); }
+      }
+
+      const { sha: freshSha } = await GithubApi.getFile(`data/${binId}.json`);
+      const freshItems = currentItems.filter((_, i) => i !== index);
+      await GithubApi.putTextFile(
+        `data/${binId}.json`,
+        JSON.stringify(freshItems, null, 2),
+        `Delete "${item.name}" from ${binId}`,
+        freshSha
+      );
+      loadItems();
+    } catch (err) {
+      console.error(err);
+      alert(`Delete failed: ${err.message}`);
+    }
+  }
+
+  // Init
+  if (!binId) {
+    titleEl.textContent = "No bin specified";
+    metaEl.textContent = "Add ?bin=bin1 to the URL";
+  } else {
+    addLink.href = `../add/index.html?bin=${binId}`;
+    viewerLink.href = `../bins/viewer.html?bin=${binId}`;
+    loadBinsPublic("../").then(bins => {
+      const binConfig = bins.find(b => b.id === binId);
+      titleEl.textContent = binConfig ? `Manage: ${binConfig.label}` : `Manage: ${binId}`;
+    });
+    loadItems();
+  }
+</script>
+</body>
+</html>

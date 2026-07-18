@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gear Bin</title>
+<link rel="stylesheet" href="../css/style.css">
+<script src="../js/config.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="brand" href="../index.html">Gear<span>Bins</span></a>
+    <nav><a id="manageLink" href="#">Manage</a><a href="../index.html">All Bins</a></nav>
+  </div>
+
+  <div class="bin-header">
+    <div class="swatch"></div>
+    <div>
+      <h1 id="binTitle">Bin</h1>
+      <div class="meta" id="binMeta">—</div>
+    </div>
+  </div>
+
+  <div id="itemGrid" class="item-grid"></div>
+</div>
+
+<a id="addLink" class="fab" href="#">+ Add Item</a>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const binId = params.get("bin");
+  const grid = document.getElementById("itemGrid");
+  const titleEl = document.getElementById("binTitle");
+  const metaEl = document.getElementById("binMeta");
+  const addLink = document.getElementById("addLink");
+
+  if (!binId) {
+    titleEl.textContent = "No bin specified";
+    metaEl.textContent = "Add ?bin=bin1 to the URL";
+  } else {
+    addLink.href = `../add/index.html?bin=${binId}`;
+    document.getElementById("manageLink").href = `../manage/index.html?bin=${binId}`;
+
+    loadBinsPublic("../").then(bins => {
+      const binConfig = bins.find(b => b.id === binId);
+      titleEl.textContent = binConfig ? binConfig.label : binId;
+    });
+
+    fetch(`../data/${binId}.json?_=${Date.now()}`)
+      .then(r => {
+        if (!r.ok) throw new Error("not found");
+        return r.json();
+      })
+      .then(items => {
+        metaEl.textContent = `${items.length} item${items.length === 1 ? "" : "s"}`;
+        if (items.length === 0) {
+          grid.innerHTML = `<div class="empty-state">This bin is empty. Tap "+ Add Item" to log the first piece of gear.</div>`;
+          return;
+        }
+        // Most recently added first
+        items.slice().reverse().forEach(item => {
+          const card = document.createElement("div");
+          card.className = "item-card";
+          const imgTag = item.image
+            ? `<img src="../images/${binId}/${item.image}" alt="${item.name}" loading="lazy">`
+            : `no photo`;
+          card.innerHTML = `
+            <div class="photo">${imgTag}</div>
+            <div class="info">
+              <p class="name">${item.name}</p>
+              ${item.note ? `<p class="note">${item.note}</p>` : ""}
+            </div>
+          `;
+          grid.appendChild(card);
+        });
+      })
+      .catch(() => {
+        metaEl.textContent = "0 items";
+        grid.innerHTML = `<div class="empty-state">This bin is empty. Tap "+ Add Item" to log the first piece of gear.</div>`;
+      });
+  }
+</script>
+</body>
+</html>
