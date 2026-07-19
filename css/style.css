@@ -366,6 +366,36 @@ a { color: inherit; }
   margin-top: -8px;
 }
 
+.controls-bar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.controls-bar input[type=text] {
+  flex: 1;
+  min-width: 160px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--ink-soft);
+  color: var(--paper);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+}
+.controls-bar input[type=text]::placeholder { color: var(--steel); }
+
+.controls-bar select {
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--ink-soft);
+  color: var(--paper);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+}
+
 /* ---------- Manage (edit/delete) page ---------- */
 .manage-list {
   display: flex;
