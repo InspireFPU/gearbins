@@ -89,6 +89,7 @@
         </div>
         <div class="actions">
           <button class="icon-btn edit" title="Edit" data-index="${index}">✎</button>
+          <button class="icon-btn move" title="Move to another bin" data-index="${index}">⇄</button>
           <button class="icon-btn delete" title="Delete" data-index="${index}">✕</button>
         </div>
       `;
@@ -99,6 +100,7 @@
       listEl.appendChild(panelHolder);
 
       row.querySelector(".edit").addEventListener("click", () => toggleEditPanel(index));
+      row.querySelector(".move").addEventListener("click", () => toggleMovePanel(index));
       row.querySelector(".delete").addEventListener("click", () => handleDelete(index));
     });
   }
@@ -220,6 +222,112 @@
         saveBtn.disabled = false;
       }
     });
+  }
+
+  async function toggleMovePanel(index) {
+    const holder = document.getElementById(`panel-${index}`);
+    if (holder.childElementCount > 0) { holder.innerHTML = ""; return; }
+    listEl.querySelectorAll('[id^="panel-"]').forEach(el => el.innerHTML = "");
+
+    const item = currentItems[index];
+    const panel = document.createElement("div");
+    panel.className = "edit-panel";
+    panel.innerHTML = `
+      <div class="field">
+        <label>Move to Bin</label>
+        <select class="move-target"><option>Loading bins…</option></select>
+      </div>
+      <div class="status-msg move-status"></div>
+      <div class="btn-row">
+        <button class="btn move-save">Move Item</button>
+        <button class="btn btn-secondary move-cancel">Cancel</button>
+      </div>
+    `;
+    document.getElementById(`panel-${index}`).appendChild(panel);
+
+    const targetSelect = panel.querySelector(".move-target");
+    const allBins = await loadBinsPublic("../");
+    const otherBins = allBins.filter(b => b.id !== binId);
+    if (otherBins.length === 0) {
+      targetSelect.innerHTML = `<option>No other bins exist</option>`;
+      targetSelect.disabled = true;
+    } else {
+      targetSelect.innerHTML = otherBins.map(b => `<option value="${b.id}">${b.label}</option>`).join("");
+    }
+
+    panel.querySelector(".move-cancel").addEventListener("click", () => {
+      document.getElementById(`panel-${index}`).innerHTML = "";
+    });
+
+    panel.querySelector(".move-save").addEventListener("click", async () => {
+      const statusEl = panel.querySelector(".move-status");
+      const token = tokenInput.value.trim();
+      if (!token) return showPanelStatus(statusEl, "Paste a GitHub token first.", "err");
+      const targetBin = targetSelect.value;
+      if (!targetBin) return showPanelStatus(statusEl, "Pick a destination bin.", "err");
+      GithubApi.setToken(token);
+
+      const saveBtn = panel.querySelector(".move-save");
+      saveBtn.disabled = true;
+
+      try {
+        // 1. Copy the photo to the destination bin's images folder, if any.
+        if (item.image) {
+          showPanelStatus(statusEl, "Copying photo…", "pending");
+          const raw = await GithubApi.getFileRaw(`images/${binId}/${item.image}`);
+          if (raw) {
+            await GithubApi.putBinaryFile(
+              `images/${targetBin}/${item.image}`,
+              raw.base64,
+              `Copy photo for "${item.name}" (${binId} → ${targetBin})`,
+              null
+            );
+          }
+        }
+
+        // 2. Add the item to the destination bin's JSON.
+        showPanelStatus(statusEl, "Adding to destination bin…", "pending");
+        const dest = await GithubApi.getFile(`data/${targetBin}.json`);
+        const destItems = dest.content ? JSON.parse(dest.content) : [];
+        destItems.push({ ...item, movedAt: new Date().toISOString() });
+        await GithubApi.putTextFile(
+          `data/${targetBin}.json`,
+          JSON.stringify(destItems, null, 2),
+          `Move "${item.name}" in from ${binId}`,
+          dest.sha
+        );
+
+        // 3. Remove the item (and its photo) from the source bin.
+        showPanelStatus(statusEl, "Removing from this bin…", "pending");
+        if (item.image) {
+          try {
+            const oldSha = await GithubApi.getFileSha(`images/${binId}/${item.image}`);
+            if (oldSha) await GithubApi.deleteFile(`images/${binId}/${item.image}`, `Remove photo (moved to ${targetBin})`, oldSha);
+          } catch (e) { console.warn("Old photo cleanup failed:", e); }
+        }
+        const { sha: freshSha } = await GithubApi.getFile(`data/${binId}.json`);
+        const remaining = currentItems.filter((_, i) => i !== index);
+        await GithubApi.putTextFile(
+          `data/${binId}.json`,
+          JSON.stringify(remaining, null, 2),
+          `Move "${item.name}" out to ${targetBin}`,
+          freshSha
+        );
+
+        showPanelStatus(statusEl, "Moved!", "ok");
+        setTimeout(() => loadItems(), 600);
+      } catch (err) {
+        console.error(err);
+        showPanelStatus(statusEl, `Failed: ${err.message}`, "err");
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+  }
+
+  function showPanelStatus(el, text, kind) {
+    el.textContent = text;
+    el.className = `status-msg move-status show ${kind}`;
   }
 
   async function handleDelete(index) {
