@@ -51,6 +51,19 @@ const GithubApi = {
     return { content: decoded, sha: data.sha };
   },
 
+  // Fetch a file's raw base64 content + sha, without decoding — safe for
+  // binary files (images). Returns null if the file doesn't exist.
+  async getFileRaw(path) {
+    const token = this.getToken();
+    const res = await fetch(this._contentsUrl(path) + `?ref=${GEARBINS_CONFIG.branch}`, {
+      headers: this._headers(token)
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`GitHub read failed (${res.status}): ${await res.text()}`);
+    const data = await res.json();
+    return { base64: data.content.replace(/\n/g, ""), sha: data.sha };
+  },
+
   // Fetch just a file's sha (safe for binary files — doesn't attempt to decode content).
   // Returns null if the file doesn't exist.
   async getFileSha(path) {
