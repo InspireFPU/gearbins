@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Search All Bins</title>
+<link rel="stylesheet" href="../css/style.css">
+<script src="../js/config.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="brand" href="../index.html">Gear<span>Bins</span></a>
+    <nav><a href="../index.html">All Bins</a></nav>
+  </div>
+
+  <div class="bin-header">
+    <div class="swatch"></div>
+    <div>
+      <h1>Search All Bins</h1>
+      <div class="meta" id="statusMeta">Loading every bin…</div>
+    </div>
+  </div>
+
+  <div class="controls-bar">
+    <input type="text" id="searchBox" placeholder="Search all items… e.g. puffer" autofocus>
+  </div>
+
+  <div id="results" class="item-grid"></div>
+</div>
+
+<script>
+  const searchBox = document.getElementById("searchBox");
+  const results = document.getElementById("results");
+  const statusMeta = document.getElementById("statusMeta");
+
+  let allEntries = []; // { name, note, image, binId, binLabel }
+
+  async function loadEverything() {
+    const bins = await loadBinsPublic("../");
+    const fetches = bins.map(bin =>
+      fetch(`../data/${bin.id}.json?_=${Date.now()}`)
+        .then(r => r.ok ? r.json() : [])
+        .then(items => items.map(item => ({ ...item, binId: bin.id, binLabel: bin.label })))
+        .catch(() => [])
+    );
+    const perBin = await Promise.all(fetches);
+    allEntries = perBin.flat();
+    statusMeta.textContent = `${allEntries.length} item${allEntries.length === 1 ? "" : "s"} across ${bins.length} bin${bins.length === 1 ? "" : "s"}`;
+    render();
+  }
+
+  function render() {
+    const query = searchBox.value.trim().toLowerCase();
+
+    if (!query) {
+      results.innerHTML = `<div class="empty-state">Start typing to search every bin at once.</div>`;
+      return;
+    }
+
+    const matches = allEntries.filter(item => {
+      const haystack = `${item.name} ${item.note || ""}`.toLowerCase();
+      return haystack.includes(query);
+    });
+
+    if (matches.length === 0) {
+      results.innerHTML = `<div class="empty-state">No items match "${searchBox.value}" in any bin.</div>`;
+      return;
+    }
+
+    results.innerHTML = "";
+    matches.forEach(item => {
+      const card = document.createElement("a");
+      card.className = "item-card";
+      card.style.display = "block";
+      card.style.textDecoration = "none";
+      card.style.color = "inherit";
+      card.href = `../bins/viewer.html?bin=${item.binId}`;
+      const imgTag = item.image
+        ? `<img src="../images/${item.binId}/${item.image}" alt="${item.name}" loading="lazy">`
+        : `no photo`;
+      card.innerHTML = `
+        <div class="photo">${imgTag}</div>
+        <div class="info">
+          <p class="name">${item.name}</p>
+          <p class="note" style="color:var(--orange);font-family:'IBM Plex Mono',monospace;">${item.binLabel}</p>
+          ${item.note ? `<p class="note">${item.note}</p>` : ""}
+        </div>
+      `;
+      results.appendChild(card);
+    });
+  }
+
+  searchBox.addEventListener("input", render);
+  loadEverything();
+</script>
+</body>
+</html>
