@@ -5,19 +5,18 @@
     "addedAt": "2026-07-19T02:20:45.299Z"
   },
   {
-    "name": "DT Socks",
+    "name": "DT Socks - 1",
     "note": "Green and Blue",
     "image": "1784427757201-dt-socks.jpg",
     "addedAt": "2026-07-19T02:22:38.583Z"
   },
   {
-    "name": "DT Socks - 2",
+    "name": "DT Socks - Gray and Orange",
     "image": "1784427820165-dt-socks-gray-and-orange.jpg",
-    "addedAt": "2026-07-19T02:23:41.438Z",
-    "note": "Gray and Orange"
+    "addedAt": "2026-07-19T02:23:41.438Z"
   },
   {
-    "name": "DT Socks 3",
+    "name": "DT Socks - 3",
     "note": "Orange and Light Gray",
     "image": "1784427914146-dt-socks-3.jpg",
     "addedAt": "2026-07-19T02:25:15.585Z"
@@ -163,11 +162,5 @@
     "note": "Black",
     "image": "1784429963833-smartwool-balaclava.jpg",
     "addedAt": "2026-07-19T02:59:24.957Z"
-  },
-  {
-    "name": "Thermajohn Pants - 1",
-    "note": "Dark Blue",
-    "image": "1784430023737-thermajohn-pants-1.jpg",
-    "addedAt": "2026-07-19T03:00:24.973Z"
   }
 ]
