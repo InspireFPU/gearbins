@@ -22,6 +22,16 @@
     </div>
   </div>
 
+  <div class="controls-bar">
+    <input type="text" id="searchBox" placeholder="Search items…">
+    <select id="sortSelect">
+      <option value="added-desc">Newest first</option>
+      <option value="added-asc">Oldest first</option>
+      <option value="name-asc">Name A–Z</option>
+      <option value="name-desc">Name Z–A</option>
+    </select>
+  </div>
+
   <div id="itemGrid" class="item-grid"></div>
 </div>
 
@@ -34,6 +44,65 @@
   const titleEl = document.getElementById("binTitle");
   const metaEl = document.getElementById("binMeta");
   const addLink = document.getElementById("addLink");
+  const searchBox = document.getElementById("searchBox");
+  const sortSelect = document.getElementById("sortSelect");
+
+  let allItems = [];
+
+  function renderItems() {
+    const query = searchBox.value.trim().toLowerCase();
+    let items = allItems.filter(item => {
+      if (!query) return true;
+      const haystack = `${item.name} ${item.note || ""}`.toLowerCase();
+      return haystack.includes(query);
+    });
+
+    switch (sortSelect.value) {
+      case "added-asc":
+        items = items.slice().sort((a, b) => new Date(a.addedAt || 0) - new Date(b.addedAt || 0));
+        break;
+      case "name-asc":
+        items = items.slice().sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case "name-desc":
+        items = items.slice().sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case "added-desc":
+      default:
+        items = items.slice().sort((a, b) => new Date(b.addedAt || 0) - new Date(a.addedAt || 0));
+        break;
+    }
+
+    metaEl.textContent = query
+      ? `${items.length} of ${allItems.length} item${allItems.length === 1 ? "" : "s"}`
+      : `${allItems.length} item${allItems.length === 1 ? "" : "s"}`;
+
+    grid.innerHTML = "";
+    if (items.length === 0) {
+      grid.innerHTML = allItems.length === 0
+        ? `<div class="empty-state">This bin is empty. Tap "+ Add Item" to log the first piece of gear.</div>`
+        : `<div class="empty-state">No items match "${searchBox.value}".</div>`;
+      return;
+    }
+    items.forEach(item => {
+      const card = document.createElement("div");
+      card.className = "item-card";
+      const imgTag = item.image
+        ? `<img src="../images/${binId}/${item.image}" alt="${item.name}" loading="lazy">`
+        : `no photo`;
+      card.innerHTML = `
+        <div class="photo">${imgTag}</div>
+        <div class="info">
+          <p class="name">${item.name}</p>
+          ${item.note ? `<p class="note">${item.note}</p>` : ""}
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+  }
+
+  searchBox.addEventListener("input", renderItems);
+  sortSelect.addEventListener("change", renderItems);
 
   if (!binId) {
     titleEl.textContent = "No bin specified";
@@ -53,29 +122,11 @@
         return r.json();
       })
       .then(items => {
-        metaEl.textContent = `${items.length} item${items.length === 1 ? "" : "s"}`;
-        if (items.length === 0) {
-          grid.innerHTML = `<div class="empty-state">This bin is empty. Tap "+ Add Item" to log the first piece of gear.</div>`;
-          return;
-        }
-        // Most recently added first
-        items.slice().reverse().forEach(item => {
-          const card = document.createElement("div");
-          card.className = "item-card";
-          const imgTag = item.image
-            ? `<img src="../images/${binId}/${item.image}" alt="${item.name}" loading="lazy">`
-            : `no photo`;
-          card.innerHTML = `
-            <div class="photo">${imgTag}</div>
-            <div class="info">
-              <p class="name">${item.name}</p>
-              ${item.note ? `<p class="note">${item.note}</p>` : ""}
-            </div>
-          `;
-          grid.appendChild(card);
-        });
+        allItems = items;
+        renderItems();
       })
       .catch(() => {
+        allItems = [];
         metaEl.textContent = "0 items";
         grid.innerHTML = `<div class="empty-state">This bin is empty. Tap "+ Add Item" to log the first piece of gear.</div>`;
       });
