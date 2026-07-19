@@ -1,8 +1,26 @@
 [
-  { "id": "bin1", "label": "Bin 1" },
-  { "id": "bin2", "label": "Bin 2" },
-  { "id": "bin3", "label": "Bin 3" },
-  { "id": "bin4", "label": "Bin 4" },
-  { "id": "bin5", "label": "Bin 5" },
-  { "id": "bin6", "label": "Bin 6" }
+  {
+    "id": "bin1",
+    "label": "Kyndall Clothes"
+  },
+  {
+    "id": "bin2",
+    "label": "Bin 2"
+  },
+  {
+    "id": "bin3",
+    "label": "Bin 3"
+  },
+  {
+    "id": "bin4",
+    "label": "Bin 4"
+  },
+  {
+    "id": "bin5",
+    "label": "Bin 5"
+  },
+  {
+    "id": "bin6",
+    "label": "Bin 6"
+  }
 ]
