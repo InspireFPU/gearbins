@@ -5,7 +5,7 @@
     "addedAt": "2026-07-19T02:20:45.299Z"
   },
   {
-    "name": "DT Socks",
+    "name": "DT Socks - 1",
     "note": "Green and Blue",
     "image": "1784427757201-dt-socks.jpg",
     "addedAt": "2026-07-19T02:22:38.583Z"
@@ -17,7 +17,7 @@
     "note": "Gray and Orange"
   },
   {
-    "name": "DT Socks 3",
+    "name": "DT Socks - 3",
     "note": "Orange and Light Gray",
     "image": "1784427914146-dt-socks-3.jpg",
     "addedAt": "2026-07-19T02:25:15.585Z"
@@ -123,7 +123,7 @@
     "addedAt": "2026-07-19T02:51:12.106Z"
   },
   {
-    "name": "Thermajohn Shirt - 1",
+    "name": "Thermajohn Base Layer - 1",
     "note": "Thermal clothing, XL",
     "image": "1784429531775-thermajohn-base-layer-1.jpg",
     "addedAt": "2026-07-19T02:52:12.913Z"
@@ -163,11 +163,5 @@
     "note": "Black",
     "image": "1784429963833-smartwool-balaclava.jpg",
     "addedAt": "2026-07-19T02:59:24.957Z"
-  },
-  {
-    "name": "Thermajohn Pants - 1",
-    "note": "Dark Blue",
-    "image": "1784430023737-thermajohn-pants-1.jpg",
-    "addedAt": "2026-07-19T03:00:24.973Z"
   }
 ]
