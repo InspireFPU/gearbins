@@ -417,6 +417,7 @@ a { color: inherit; }
   justify-content: center;
 }
 .icon-btn.edit { background: var(--olive); color: #fff; }
+.icon-btn.move { background: #3a6ea5; color: #fff; }
 .icon-btn.delete { background: #c74a2f; color: #fff; }
 
 .edit-panel {
